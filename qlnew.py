@@ -16,183 +16,6 @@ if "Individual" not in creator.__dict__:
     creator.create("Individual", list, fitness=creator.FitnessMax)
 
 # --- Funciones de Carga y Procesamiento de Datos ---
-# (Sin cambios en las funciones de carga de datos, por brevedad se omiten)
-@st.cache_data
-def load_data_and_counts(uploaded_file):
-    if uploaded_file is None: return None, {}, {}, {}, [], {}, 0, {}
-    # ... (código de la función anterior)
-    pass
-
-@st.cache_data
-def load_historical_combinations(uploaded_file):
-    if uploaded_file is None: return []
-    # ... (código de la función anterior)
-    pass
-    
-# --- Funciones de Análisis Histórico (CON NUEVAS FUNCIONES) ---
-@st.cache_data
-def analyze_historical_special_calc(historical_sets, total_atraso_dataset, numero_a_atraso):
-    if not historical_sets or total_atraso_dataset is None: return None
-    values = [total_atraso_dataset + 40 - sum(numero_a_atraso.get(str(num), 0) for num in s) for s in historical_sets]
-    if not values: return None
-    return {"min": int(np.min(values)), "max": int(np.max(values)), "mean": int(np.mean(values)), "std": int(np.std(values))}
-
-@st.cache_data
-def analyze_historical_frequency_cv(historical_sets, numero_a_frecuencia):
-    if not historical_sets or not numero_a_frecuencia: return None
-    cv_values = [np.std(freqs) / np.mean(freqs) for s in historical_sets if (freqs := [numero_a_frecuencia.get(str(num), 0) for num in s]) and np.mean(freqs) > 0]
-    if not cv_values: return None
-    return {"min": np.min(cv_values), "max": np.max(cv_values), "mean": np.mean(cv_values), "std": np.std(cv_values)}
-
-# NUEVO: Análisis de la Estructura Interna
-@st.cache_data
-def analyze_historical_structure(historical_sets):
-    if not historical_sets: return None, None
-    sums = [sum(s) for s in historical_sets]
-    
-    parity_counts = Counter(sum(1 for num in s if num % 2 == 0) for s in historical_sets)
-    
-    consecutive_counts = []
-    for s in historical_sets:
-        nums = sorted(list(s))
-        max_consecutive = 0
-        current_consecutive = 1
-        for i in range(1, len(nums)):
-            if nums[i] == nums[i-1] + 1:
-                current_consecutive += 1
-            else:
-                max_consecutive = max(max_consecutive, current_consecutive)
-                current_consecutive = 1
-        max_consecutive = max(max_consecutive, current_consecutive)
-        consecutive_counts.append(max_consecutive)
-
-    sum_stats = {"min": int(np.min(sums)), "max": int(np.max(sums)), "mean": int(np.mean(sums)), "std": int(np.std(sums))}
-    consecutive_stats = Counter(consecutive_counts)
-    
-    return sum_stats, parity_counts, consecutive_stats
-
-@st.cache_data
-def analyze_historical_composition(historical_sets, numero_a_atraso, composicion_ranges):
-    # ... (Sin cambios)
-    pass
-
-# --- Motores de Generación y Filtrado (ACTUALIZADOS) ---
-def generar_combinaciones_con_restricciones(params):
-    # Desempaquetar todos los parámetros para claridad
-    dist_prob, num_a_atraso, num_a_freq, restr_atraso, n_sel, n_comb, hist_combs, \
-    total_atraso, special_range, freq_cv_range, sum_range, parity_counts_allowed, \
-    max_consecutive_allowed, hist_similarity_threshold = params
-    
-    valores = list(dist_prob.keys())
-    combinaciones = []
-    intentos = 0
-    max_intentos = n_comb * 400 # Aumentado por la severidad de los filtros
-    
-    while len(combinaciones) < n_comb and intentos < max_intentos:
-        intentos += 1
-        seleccionados_str = random.sample(valores, n_sel)
-        seleccionados = [int(n) for n in seleccionados_str]
-        
-        # --- APLICAR TODOS LOS FILTROS DE PRECISIÓN ---
-        # Filtros de Estructura Interna (NUEVO)
-        if not (sum_range[0] <= sum(seleccionados) <= sum_range[1]): continue
-        if sum(1 for n in seleccionados if n % 2 == 0) not in parity_counts_allowed: continue
-        
-        nums = sorted(seleccionados)
-        current_consecutive = 1
-        max_consecutive = 0
-        for i in range(1, len(nums)):
-            if nums[i] == nums[i-1] + 1: current_consecutive += 1
-            else: max_consecutive = max(max_consecutive, current_consecutive); current_consecutive = 1
-        if max(max_consecutive, current_consecutive) > max_consecutive_allowed: continue
-
-        # Filtros de Homeostasis
-        freqs = [num_a_freq.get(str(val), 0) for val in seleccionados]; mean_freq = np.mean(freqs)
-        if mean_freq == 0 or not (freq_cv_range[0] <= (np.std(freqs) / mean_freq) <= freq_cv_range[1]): continue
-            
-        suma_atrasos = sum(num_a_atraso.get(str(val), 0) for val in seleccionados)
-        valor_especial = total_atraso + 40 - suma_atrasos
-        if not (special_range[0] <= valor_especial <= special_range[1]): continue
-
-        # Filtros de Atraso y Similitud
-        if any(Counter(num_a_atraso.get(str(n), -1) for n in seleccionados)[int(a)] > l for a, l in restr_atraso.items()): continue
-        if hist_combs and any(len(set(seleccionados).intersection(h)) > hist_similarity_threshold for h in hist_combs): continue
-        
-        combinaciones.append(tuple(sorted(seleccionados)))
-        
-    conteo = Counter(combinaciones)
-    return sorted({c: (f, np.prod([dist_prob.get(str(v), 0) for v in c])) for c, f in conteo.items()}.items(), key=lambda x: -x[1][1])
-
-def procesar_combinaciones(params_tuple):
-    # ... (Modificado para aceptar una tupla de parámetros)
-    pass
-
-def evaluar_individuo_deap(individuo, params):
-    # ... (Modificado para aceptar una tupla de parámetros)
-    pass
-    
-# (El código completo y funcional de estas funciones, junto con el resto, se incluirá al final)
-
-# ----------------------- Interfaz Gráfica de Streamlit -----------------------
-
-st.set_page_config(layout="wide", page_title="Generador de Combinaciones de Precisión")
-st.title("Modelo Homeostático de Precisión")
-
-# --- 1. Carga de Archivos ---
-# ... (código sin cambios)
-# --- 2. Configuración ---
-st.header("2. Configuración de Filtros de Precisión")
-if df is not None:
-    # --- FILTROS DE HOMEOSTASIS (Largo y Corto Plazo) ---
-    st.subheader("Filtros de Homeostasis (Etapa 1)")
-    # ... (La UI para CV de Frecuencia y Cálculo Especial, sin cambios)
-    
-    # --- NUEVO: FILTROS DE ESTRUCTURA INTERNA ---
-    st.subheader("Filtros de Estructura Interna (Etapa 1)")
-    if historical_combinations_set:
-        sum_stats, parity_stats, consecutive_stats = analyze_historical_structure(historical_combinations_set)
-        
-        col_sum, col_par, col_cons = st.columns(3)
-        with col_sum:
-            with st.expander("Suma de la Combinación", expanded=True):
-                if sum_stats:
-                    st.info(f"Historial: Suma varía de {sum_stats['min']} a {sum_stats['max']}.")
-                    default_sum = (sum_stats['mean'] - sum_stats['std'], sum_stats['mean'] + sum_stats['std'])
-                    sum_range = st.slider("Rango de Suma:", float(sum_stats['min'] - 20), float(sum_stats['max'] + 20), default_sum)
-        with col_par:
-            with st.expander("Cantidad de Números Pares", expanded=True):
-                if parity_stats:
-                    options = sorted(list(parity_stats.keys()))
-                    st.info(f"Distribución histórica: {dict(parity_stats.most_common())}")
-                    parity_counts_allowed = st.multiselect("Nº Pares Permitidos:", options, default=options)
-        with col_cons:
-            with st.expander("Máx. Números Consecutivos", expanded=True):
-                if consecutive_stats:
-                    st.info(f"Distribución histórica: {dict(consecutive_stats.most_common())}")
-                    max_consecutive_allowed = st.number_input("Máximo de Consecutivos:", 1, n_selecciones, 2)
-                    
-    # --- FILTROS DE ATRASO Y COMPOSICIÓN ---
-    st.subheader("Filtros de Atraso, Similitud y Composición Estratégica")
-    with st.expander("Atraso Individual, Similitud (Etapa 1) y Composición (Etapa 2)"):
-        # ... (Aquí va la UI para Atrasos Individuales y Composición)
-        
-        # NUEVO: Slider para similitud histórica
-        st.write("**Umbral de Similitud Histórica (Etapa 1)**")
-        hist_similarity_threshold = st.slider("Máximo de números repetidos de cualquier sorteo pasado:", 0, 5, 2)
-        
-    # ... (La UI de Parámetros de Algoritmos no cambia)
-else:
-    st.info("Carga los archivos para configurar los filtros.")
-
-# --- 3. Ejecución ---
-# ... (El botón del AG ahora llama a ejecutar_algoritmo_genetico con la tupla de parámetros)
-# ... (El botón de Simulación ahora llama a procesar_combinaciones con la tupla de parámetros)
-
-# --- Barra Lateral ---
-# ... (Actualizada para incluir los nuevos filtros)
-
-# ----------------- CÓDIGO COMPLETO Y FUNCIONAL (PARA COPIAR Y PEGAR) -----------------
-# Carga de datos (igual que la última versión)
 @st.cache_data
 def load_data_and_counts(uploaded_file):
     if uploaded_file is None: return None, {}, {}, {}, [], {}, 0, {}
@@ -226,7 +49,35 @@ def load_historical_combinations(uploaded_file):
     except Exception as e:
         st.error(f"Error al procesar el archivo de historial: {e}"); return []
 
-# Análisis de composición (sin cambios)
+# --- Funciones de Análisis Histórico ---
+@st.cache_data
+def analyze_historical_special_calc(historical_sets, total_atraso_dataset, numero_a_atraso):
+    if not historical_sets or total_atraso_dataset is None: return None
+    values = [total_atraso_dataset + 40 - sum(numero_a_atraso.get(str(num), 0) for num in s) for s in historical_sets]
+    if not values: return None
+    return {"min": int(np.min(values)), "max": int(np.max(values)), "mean": int(np.mean(values)), "std": int(np.std(values))}
+
+@st.cache_data
+def analyze_historical_frequency_cv(historical_sets, numero_a_frecuencia):
+    if not historical_sets or not numero_a_frecuencia: return None
+    cv_values = [np.std(freqs) / np.mean(freqs) for s in historical_sets if (freqs := [numero_a_frecuencia.get(str(num), 0) for num in s]) and np.mean(freqs) > 0]
+    if not cv_values: return None
+    return {"min": np.min(cv_values), "max": np.max(cv_values), "mean": np.mean(cv_values), "std": np.std(cv_values)}
+
+@st.cache_data
+def analyze_historical_structure(historical_sets):
+    if not historical_sets: return None, None, None
+    sums = [sum(s) for s in historical_sets]; parity_counts = Counter(sum(1 for num in s if num % 2 == 0) for s in historical_sets)
+    consecutive_counts = []
+    for s in historical_sets:
+        nums = sorted(list(s)); max_consecutive = 0; current_consecutive = 1
+        for i in range(1, len(nums)):
+            if nums[i] == nums[i-1] + 1: current_consecutive += 1
+            else: max_consecutive = max(max_consecutive, current_consecutive); current_consecutive = 1
+        consecutive_counts.append(max(max_consecutive, current_consecutive))
+    sum_stats = {"min": int(np.min(sums)), "max": int(np.max(sums)), "mean": int(np.mean(sums)), "std": int(np.std(sums))}
+    return sum_stats, parity_counts, Counter(consecutive_counts)
+
 @st.cache_data
 def analyze_historical_composition(historical_sets, numero_a_atraso, composicion_ranges):
     if not historical_sets: return None
@@ -239,10 +90,42 @@ def analyze_historical_composition(historical_sets, numero_a_atraso, composicion
     counts = Counter(tuple(Counter(get_category(numero_a_atraso.get(str(num), -1), composicion_ranges) for num in s).get(cat, 0) for cat in ['caliente', 'tibio', 'frio', 'congelado']) for s in historical_sets)
     return counts if counts else None
     
-# Backend functions
+# --- Motores de Generación y Filtrado ---
+def generar_combinaciones_con_restricciones(params):
+    dist_prob, num_a_atraso, num_a_freq, restr_atraso, n_sel, n_comb, hist_combs, total_atraso, special_range, freq_cv_range, sum_range, parity_counts_allowed, max_consecutive_allowed, hist_similarity_threshold = params
+    valores = list(dist_prob.keys()); combinaciones = []; intentos = 0; max_intentos = n_comb * 400
+    while len(combinaciones) < n_comb and intentos < max_intentos:
+        intentos += 1
+        seleccionados_str = random.sample(valores, n_sel); seleccionados = [int(n) for n in seleccionados_str]
+        if not (sum_range[0] <= sum(seleccionados) <= sum_range[1]): continue
+        if sum(1 for n in seleccionados if n % 2 == 0) not in parity_counts_allowed: continue
+        nums = sorted(seleccionados); current_consecutive = 1; max_consecutive = 0
+        for i in range(1, len(nums)):
+            if nums[i] == nums[i-1] + 1: current_consecutive += 1
+            else: max_consecutive = max(max_consecutive, current_consecutive); current_consecutive = 1
+        if max(max_consecutive, current_consecutive) > max_consecutive_allowed: continue
+        freqs = [num_a_freq.get(str(val), 0) for val in seleccionados]; mean_freq = np.mean(freqs)
+        if mean_freq == 0 or not (freq_cv_range[0] <= (np.std(freqs) / mean_freq) <= freq_cv_range[1]): continue
+        suma_atrasos = sum(num_a_atraso.get(str(val), 0) for val in seleccionados); valor_especial = total_atraso + 40 - suma_atrasos
+        if not (special_range[0] <= valor_especial <= special_range[1]): continue
+        if any(Counter(num_a_atraso.get(str(n), -1) for n in seleccionados)[int(a)] > l for a, l in restr_atraso.items()): continue
+        if hist_combs and any(len(set(seleccionados).intersection(h)) > hist_similarity_threshold for h in hist_combs): continue
+        combinaciones.append(tuple(sorted(seleccionados)))
+    conteo = Counter(combinaciones)
+    return sorted({c: (f, np.prod([dist_prob.get(str(v), 0) for v in c])) for c, f in conteo.items()}.items(), key=lambda x: -x[1][1])
+
 def procesar_combinaciones(params_tuple, n_ejec):
     with ProcessPoolExecutor() as executor:
         return [future.result() for future in as_completed([executor.submit(generar_combinaciones_con_restricciones, params_tuple) for _ in range(n_ejec)])]
+
+def filtrar_por_composicion(combinaciones, numero_a_atraso, composicion_rules):
+    def get_category(atraso, ranges):
+        if ranges['caliente'][0] <= atraso <= ranges['caliente'][1]: return 'caliente'
+        elif ranges['tibio'][0] <= atraso <= ranges['tibio'][1]: return 'tibio'
+        elif ranges['frio'][0] <= atraso <= ranges['frio'][1]: return 'frio'
+        elif atraso >= ranges['congelado'][0]: return 'congelado'
+        return 'otro'
+    return [c for c in combinaciones if all(Counter(get_category(numero_a_atraso.get(str(n),-1), composicion_rules['ranges']) for n in c).get(cat,0)==cnt for cat,cnt in composicion_rules['counts'].items())]
 
 def evaluar_individuo_deap(individuo_str, params):
     dist_prob, num_a_atraso, num_a_freq, restr_atraso, n_sel, hist_combs, total_atraso, special_range, freq_cv_range, sum_range, parity_counts_allowed, max_consecutive_allowed, hist_similarity_threshold = params
@@ -281,14 +164,11 @@ def ejecutar_algoritmo_genetico(ga_params, backend_params):
         return best, toolbox.evaluate(best)[0], None
     return None, 0.0, "Población final vacía."
 
-# Interfaz
-# (Los st.set_page_config y st.title van aquí)
-# ...
-
-# UI de Ejecución y Lógica principal
+# ----------------------- Interfaz Gráfica de Streamlit -----------------------
 st.set_page_config(layout="wide", page_title="Generador de Combinaciones de Precisión")
 st.title("Modelo Homeostático de Precisión")
 if 'suggested_composition' not in st.session_state: st.session_state.suggested_composition = None
+
 st.header("1. Cargar Archivos de Datos")
 col1, col2 = st.columns(2)
 with col1:
@@ -303,6 +183,7 @@ if df is not None:
      st.info(f"**Suma total de 'Atraso' en el dataset:** {total_atraso}")
 
 st.header("2. Configuración de Filtros de Precisión")
+# --- Inicialización de todas las variables de configuración ---
 restricciones_finales, composicion_rules, sum_range, parity_counts_allowed, max_consecutive_allowed, hist_similarity_threshold = {}, {}, (0, 999), [], 6, 6
 special_calc_range, freq_cv_range = (0, 99999), (0.0, 999.9)
 
@@ -314,7 +195,7 @@ if df is not None:
             with st.expander("Filtro por CV de Frecuencia (Largo Plazo)", expanded=True):
                 stats_freq_cv = analyze_historical_frequency_cv(historical_combinations_set, num_a_freq)
                 if stats_freq_cv:
-                    st.info(f"Historial: CV de Frecuencia varía de **{stats_freq_cv['min']:.2f}** a **{stats_freq_cv['max']:.2f}**.")
+                    st.info(f"Historial: CV Frec. varía de **{stats_freq_cv['min']:.2f}** a **{stats_freq_cv['max']:.2f}**.")
                     slider_min_cv, slider_max_cv = 0.0, 2.0
                     default_start_cv = max(slider_min_cv, stats_freq_cv['mean'] - stats_freq_cv['std'])
                     default_end_cv = min(slider_max_cv, stats_freq_cv['mean'] + stats_freq_cv['std'])
@@ -360,7 +241,7 @@ if df is not None:
         st.write("**Filtro Estratégico de Composición (Etapa 2)**"); max_atraso = atraso_stats.get("max", 100)
         c1, c2 = st.columns(2)
         with c1: range_caliente = st.slider("Rango 'Caliente'", 0, max_atraso, (0, int(atraso_stats.get("p25", 5))), key="r_hot"); range_frio = st.slider("Rango 'Frío'", 0, max_atraso, (int(atraso_stats.get("p75", 15)), max_atraso - 1), key="r_cold")
-        with c2: range_tibio = st.slider("Rango 'Tibio'", 0, max_atraso, (range_caliente[1] + 1, range_frio[0] -1), key="r_warm"); min_congelado = st.number_input("Mínimo 'Congelado'", max_atraso, key="r_icy")
+        with c2: range_tibio = st.slider("Rango 'Tibio'", 0, max_atraso, (range_caliente[1] + 1, range_frio[0] -1), key="r_warm"); min_congelado = st.number_input("Mínimo 'Congelado'", value=max_atraso, key="r_icy")
         current_ranges = {'caliente': range_caliente, 'tibio': range_tibio, 'frio': range_frio, 'congelado': (min_congelado, 9999)}
         if historical_combinations_set:
             comp_analysis = analyze_historical_composition(historical_combinations_set, num_a_atraso, current_ranges)
@@ -380,6 +261,8 @@ if df is not None:
         col_ga, col_sim = st.columns(2)
         with col_ga: st.subheader("Algoritmo Genético"); ga_ngen=st.slider("Generaciones",10,1000,200); ga_npob=st.slider("Población",100,5000,1000); ga_cxpb=st.slider("Cruce",0.0,1.0,0.7); ga_mutpb=st.slider("Mutación",0.0,1.0,0.2)
         with col_sim: st.subheader("Simulación en Cascada"); sim_n_comb=st.number_input("Combinaciones/Ejec.",1000,value=50000); sim_n_ejec=st.number_input("Ejecuciones",1,value=8)
+else:
+    st.info("Carga los archivos para configurar los filtros.")
 
 st.header("3. Ejecutar Algoritmos")
 if df is not None:
@@ -393,13 +276,13 @@ if df is not None:
             if err_msg: st.error(err_msg)
             elif mejor_ind:
                 st.subheader("Mejor Combinación (GA)"); st.success(f"**Combinación: {' - '.join(map(str, mejor_ind))}**")
-                freqs = [num_a_freq.get(str(v),0) for v in mejor_ind]; st.write(f"**CV Frecuencia:** {np.std(freqs)/np.mean(freqs):.2f}")
+                freqs = [num_a_freq.get(str(v),0) for v in mejor_ind]; st.write(f"**CV Frecuencia:** {np.std(freqs)/np.mean(freqs) if np.mean(freqs) > 0 else 0:.2f}")
                 st.write(f"**Cálculo Especial:** {total_atraso + 40 - sum(num_a_atraso.get(str(v),0) for v in mejor_ind)}")
             else: st.warning("El GA no encontró una combinación válida.")
 
     with run_col2:
         if st.button("Ejecutar Simulación en Cascada"):
-            params_sim = (*backend_params[:4], n_selecciones, sim_n_comb, *backend_params[5:])
+            params_sim = (dist_prob, num_a_atraso, num_a_freq, restricciones_finales, n_selecciones, sim_n_comb, historical_combinations_set, total_atraso, special_calc_range, freq_cv_range, sum_range, parity_counts_allowed, max_consecutive_allowed, hist_similarity_threshold)
             with st.spinner("Etapa 1: Generando combinaciones..."):
                 start_time = time.time(); resultados = procesar_combinaciones(params_sim, sim_n_ejec)
                 st.info(f"Etapa 1: {sum(len(r) for r in resultados)} combinaciones válidas en {time.time() - start_time:.2f} s.")
@@ -416,5 +299,7 @@ if df is not None:
                 df_results = pd.DataFrame(data)
                 df_results['CV Frecuencia'] = df_results['CV Frecuencia'].map('{:,.2f}'.format)
                 st.dataframe(df_results.reset_index(drop=True))
+else:
+    st.warning("Carga los archivos de datos para ejecutar los algoritmos.")
 
 st.sidebar.header("Guía del Modelo"); st.sidebar.markdown("Este modelo se basa en el **principio de homeostasis**: un sistema aleatorio tiende al equilibrio."); st.sidebar.markdown("**Filtros de Homeostasis y Estructura (Etapa 1):**"); st.sidebar.markdown("- **CV Frecuencia:** Equilibrio a largo plazo. - **Cálculo Especial:** Equilibrio a corto plazo. - **Suma, Pares, Consecutivos:** Coherencia interna de la combinación."); st.sidebar.markdown("**Filtro Estratégico (Etapa 2):**"); st.sidebar.markdown("- **Composición:** Define la 'personalidad' (Calientes, Fríos, etc.). La app **recomienda** la estrategia más común del historial.")
